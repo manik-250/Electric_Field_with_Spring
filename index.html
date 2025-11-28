@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Spring + Electric Plates — Remastered</title>
+<style>
+  :root{
+    --bg:#0f1724;
+    --card:#0b1220;
+    --accent:#7c3aed;
+    --glass: rgba(255,255,255,0.04);
+    --muted: rgba(255,255,255,0.6);
+  }
+  *{box-sizing:border-box}
+  body{font-family:Inter,ui-sans-serif,system-ui,Arial; margin:0; min-height:100vh; background:linear-gradient(180deg,#071028 0%, #081025 40%, #0b1220 100%); color:#e6eef8; display:flex; gap:24px; padding:28px;}
+
+  /* Left controls */
+  .panel{width:320px; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:14px; padding:18px; box-shadow: 0 6px 30px rgba(0,0,0,0.6); border:1px solid rgba(255,255,255,0.03);}
+  h2{margin:0 0 10px 0; font-size:20px}
+  label{display:block; font-size:13px; color:var(--muted); margin-top:12px}
+  input[type=number], input[type=range], select{width:100%; margin-top:6px; padding:8px; border-radius:8px; border:1px solid rgba(255,255,255,0.06); background:transparent; color:inherit}
+  .row{display:flex; gap:8px}
+  button{margin-top:14px; width:100%; padding:10px 12px; border-radius:10px; background:linear-gradient(90deg,var(--accent), #06b6d4); border:none; color:white; font-weight:600; cursor:pointer}
+  small{color:rgba(255,255,255,0.45)}
+
+  /* Simulation area */
+  .sim{flex:1; display:flex; flex-direction:column; gap:12px}
+  .simTop{display:flex; align-items:center; gap:12px}
+  .simStage{flex:1; background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01)); border-radius:14px; padding:18px; position:relative; overflow:hidden;}
+  #canvasWrapper{width:680px; height:620px; margin:auto; background:linear-gradient(180deg,#071326 0%, #041023 100%); border-radius:12px; position:relative; box-shadow: 0 10px 50px rgba(2,6,23,0.7); border:1px solid rgba(255,255,255,0.03)}
+
+  /* plates */
+  .plate{position:absolute; left:50%; transform:translateX(-50%); width:420px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:700; letter-spacing:6px; font-size:18px;}
+  #plateTop{top:92px; background:linear-gradient(90deg, rgba(255,120,120,0.12), rgba(255,120,120,0.06)); border:2px solid rgba(255,80,80,0.35); box-shadow:0 6px 20px rgba(255,60,60,0.06); color:#ffc9c9}
+  #plateBottom{height:56px; background:linear-gradient(90deg, rgba(140,180,255,0.06), rgba(120,120,255,0.03)); border:2px solid rgba(80,120,255,0.35); box-shadow:0 6px 20px rgba(80,120,255,0.04); color:#d7e5ff}
+
+  /* battery */
+  .batteryWrap{display:flex; align-items:center; gap:12px}
+  .battery{width:94px; height:46px; border-radius:10px; background:linear-gradient(180deg,#031427,#0a2434); display:flex; align-items:center; padding:6px; box-shadow: inset 0 2px 8px rgba(255,255,255,0.02); border:1px solid rgba(255,255,255,0.04)}
+  .cell{height:30px; width:56px; border-radius:6px; background:linear-gradient(90deg,#021b2b,#032033); overflow:hidden; position:relative;}
+  .juice{position:absolute; left:0; bottom:0; width:100%; height:40%; background:linear-gradient(180deg,#ff8a00,#ff3b3b); transform-origin:left bottom; transition:height .25s ease}
+  .term{width:8px; height:12px; background:#fff; border-radius:3px; margin-left:6px}
+  .batteryLabel{font-size:12px;color:var(--muted)}
+
+  /* mass + spring */
+  #mass{position:absolute; left:50%; transform:translateX(-50%); width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-weight:700; box-shadow: 0 8px 30px rgba(0,0,0,0.6);}
+  #mass .ball{width:32px; height:32px; border-radius:50%; background:linear-gradient(180deg,#1ea7ff,#4a2ef6); box-shadow:0 8px 30px rgba(74,46,246,0.18); display:flex; align-items:center; justify-content:center; color:#fff}
+  #springSVG{position:absolute; left:50%; transform:translateX(-50%); overflow:visible}
+  #extensionLabel{position:absolute; right:22px; top:22px; background:rgba(255,255,255,0.02); padding:8px 10px; border-radius:8px; font-weight:700}
+
+  /* field lines canvas layer */
+  canvas{position:absolute; inset:0; pointer-events:none}
+
+  /* spark styling */
+  .spark{
+    position:absolute; width:6px; height:6px; border-radius:50%; pointer-events:none; mix-blend-mode:screen;
+  }
+
+  /* tiny helper */
+  .muted{color:rgba(255,255,255,0.45)}
+
+  /* responsive tweaks */
+  @media (max-width:1100px){body{flex-direction:column} .panel{width:100%} .sim{width:100%}}
+</style>
+</head>
+<body>
+  <div class="panel">
+    <h2>Controls — Make it spicy ✨</h2>
+    <label>Mass (kg)<input id="mInput" type="number" value="1" step="0.1"></label>
+    <label>Spring constant k (N/m)<input id="kInput" type="number" value="100" step="1"></label>
+    <label>Gravity g (m/s²)<input id="gInput" type="number" value="9.8" step="0.1"></label>
+
+    <hr style="margin:14px 0; border:none; height:1px; background:rgba(255,255,255,0.03)">
+
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <div>
+        <div class="batteryWrap">
+          <div class="battery" aria-hidden>
+            <div class="cell"><div id="juice" class="juice"></div></div>
+            <div class="term"></div>
+          </div>
+          <div style="display:flex;flex-direction:column">
+            <div class="batteryLabel">Battery</div>
+            <div id="voltageLabel" style="font-weight:700">100 V</div>
+          </div>
+        </div>
+      </div>
+      <div style="width:140px">
+        <label style="margin-bottom:6px">Voltage (V)</label>
+        <input id="VInput" type="range" min="0" max="500" step="1" value="100">
+      </div>
+    </div>
+
+    <label>Charge on ball (C) <input id="qInput" type="number" value="0.001" step="0.0001"></label>
+    <label>Plate distance (m) <input id="dInput" type="number" value="0.25" step="0.01"></label>
+    <label>Animation speed <input id="speedSlider" type="range" min="0.02" max="0.6" step="0.01" value="0.08"></label>
+
+    <div class="row">
+      <button id="applyBtn">Apply values</button>
+      <button id="dropBtn" style="background:linear-gradient(90deg,#ef4444,#f97316)">Drop</button>
+    </div>
+
+    <small class="muted">Tip: drag the voltage slider to see field-lines animate and the battery fill.</small>
+  </div>
+
+  <div class="sim">
+    <div class="simStage">
+      <div id="canvasWrapper">
+        <canvas id="fieldCanvas" width="680" height="620"></canvas>
+
+        <div id="plateTop" class="plate">+++++</div>
+        <div id="plateBottom" class="plate">-----</div>
+
+        <svg id="springSVG" width="12" height="120" viewBox="-12 -12 24 120" xmlns="http://www.w3.org/2000/svg">
+          <path id="springPath" stroke="#9b5cff" stroke-width="2" fill="none" stroke-linecap="round"/> 
+        </svg>
+
+        <div id="mass"> <div class="ball">q</div></div>
+        <div id="extensionLabel">x = 0.0 cm</div>
+      </div>
+    </div>
+  </div>
+
+<script>
+// Cache DOM
+const mInput = document.getElementById('mInput');
+const kInput = document.getElementById('kInput');
+const gInput = document.getElementById('gInput');
+const VInput = document.getElementById('VInput');
+const qInput = document.getElementById('qInput');
+const dInput = document.getElementById('dInput');
+const speedSlider = document.getElementById('speedSlider');
+const applyBtn = document.getElementById('applyBtn');
+const dropBtn = document.getElementById('dropBtn');
+const plateTop = document.getElementById('plateTop');
+const plateBottom = document.getElementById('plateBottom');
+const juice = document.getElementById('juice');
+const voltageLabel = document.getElementById('voltageLabel');
+const mass = document.getElementById('mass');
+const extensionLabel = document.getElementById('extensionLabel');
+const springSVG = document.getElementById('springSVG');
+const springPath = document.getElementById('springPath');
+const fieldCanvas = document.getElementById('fieldCanvas');
+const ctx = fieldCanvas.getContext('2d');
+
+// Layout & physics state
+const stage = document.getElementById('canvasWrapper');
+let y = 0; // meters relative extension normalized
+let targetY = 0;
+let lastV = parseFloat(VInput.value);
+
+function layoutPlates(){
+  const topY = 92; // px
+  const dMeters = parseFloat(dInput.value);
+  const bottomY = topY + Math.max(80, Math.min(380, dMeters*400));
+  plateTop.style.top = topY + 'px';
+  plateBottom.style.top = (bottomY) + 'px';
+}
+
+function computeEquilibrium(){
+  const m = parseFloat(mInput.value);
+  const k = parseFloat(kInput.value);
+  const g = parseFloat(gInput.value);
+  const V = parseFloat(VInput.value);
+  const q = parseFloat(qInput.value);
+  const d = parseFloat(dInput.value);
+
+  // Electric field approx E = V/d, Force Fe = qE
+  const Fe = q * (V / Math.max(d,0.001));
+  const Fg = m * g;
+  const ext = (Fe + Fg) / k; // meters
+  targetY = Math.min(0.6, Math.max(0, ext));
+
+  layoutPlates();
+  updateBatteryUI();
+}
+
+function updateBatteryUI(){
+  const V = parseFloat(VInput.value);
+  voltageLabel.textContent = Math.round(V) + ' V';
+  const frac = Math.min(1, Math.max(0, V/500));
+  juice.style.height = Math.max(6, Math.round(frac*100)) + '%';
+  // battery color shift
+  juice.style.background = `linear-gradient(180deg, hsl(${Math.round(40+200*frac)},100%,55%), hsl(${Math.round(0+200*frac)},80%,45%))`;
+
+  // if sudden change create plate vibration
+  if(Math.abs(V - lastV) > 30) animatePlatePulse();
+  lastV = V;
+}
+
+function animatePlatePulse(){
+  plateTop.animate([{transform:'translateX(-50%) scale(1)'},{transform:'translateX(-50%) scale(1.02)'},{transform:'translateX(-50%) scale(1)'}],{duration:350,iterations:1});
+  plateBottom.animate([{transform:'translateX(-50%) scale(1)'},{transform:'translateX(-50%) scale(1.02)'},{transform:'translateX(-50%) scale(1)'}],{duration:350,iterations:1});
+}
+
+applyBtn.addEventListener('click', ()=>{ computeEquilibrium(); });
+dropBtn.addEventListener('click', ()=>{ y=0; computeEquilibrium(); });
+VInput.addEventListener('input', ()=>{ computeEquilibrium(); });
+
+computeEquilibrium();
+
+// Field-lines visualization (particle flow)
+const particles = [];
+function resetParticles(){
+  particles.length = 0;
+  for(let i=0;i<180;i++){
+    particles.push({x:Math.random()*fieldCanvas.width, y:Math.random()*fieldCanvas.height, vx:0, vy:0, life:Math.random()*80});
+  }
+}
+resetParticles();
+
+function drawField(){
+  ctx.clearRect(0,0,fieldCanvas.width, fieldCanvas.height);
+
+  // simple visualization: draw fading radial-ish field from plates
+  const V = parseFloat(VInput.value);
+  const dPx = plateBottom.offsetTop - plateTop.offsetTop;
+  const left = stage.offsetLeft;
+
+  // color map based on V
+  const hue = Math.round(220 - Math.min(200, V/2));
+
+  // draw soft gradient between plates
+  const g = ctx.createLinearGradient(0, plateTop.offsetTop+24, 0, plateBottom.offsetTop+14);
+  g.addColorStop(0, `rgba(120,150,255,${Math.min(0.6, V/800)+0.05})`);
+  g.addColorStop(1, `rgba(200,120,255,${Math.min(0.6, V/800)+0.01})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, plateTop.offsetTop+24, fieldCanvas.width, dPx-8);
+
+  // particle streamlines
+  for(const p of particles){
+    // move roughly from top to bottom for positive plate on top
+    const e = (V>=0) ? 1 : -1;
+    const strength = Math.min(2, Math.abs(V)/200);
+    p.vy += 0.06*strength*e*(0.8 + Math.sin((p.x+p.y)/90));
+    p.vx += (Math.random()-0.5)*0.3;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.6;
+    if(p.y>fieldCanvas.height+20 || p.y<-20 || p.x<-20 || p.x>fieldCanvas.width+20 || p.life<0){
+      p.x = Math.random()*fieldCanvas.width; p.y = plateTop.offsetTop + Math.random()*(dPx-10); p.vx=0; p.vy=0; p.life = 80 + Math.random()*80;
+    }
+
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, Math.max(0.5, 1.5*strength), 0, Math.PI*2);
+    ctx.fillStyle = `rgba(255,255,255,${0.12 + Math.min(0.6, V/600)})`;
+    ctx.fill();
+  }
+
+  // small animated field lines using dashed strokes
+  ctx.lineWidth = 1.2;
+  ctx.strokeStyle = `rgba(255,255,255,${Math.min(0.18, V/1200)+0.02})`;
+  for(let i=0;i<6;i++){
+    const x = 120 + i*70;
+    ctx.beginPath();
+    ctx.moveTo(x, plateTop.offsetTop+24);
+    const mid = (plateTop.offsetTop+plateBottom.offsetTop)/2 + Math.sin(Date.now()/500 + i)*18;
+    ctx.quadraticCurveTo(x+40, mid, x, plateBottom.offsetTop+14);
+    ctx.stroke();
+  }
+}
+
+// -----------------
+// FIXED SPRING + MASS
+// -----------------
+function drawSpringAndMass(){
+  // Anchor point: bottom surface of top plate
+  const topY = plateTop.offsetTop + plateTop.offsetHeight;
+  const bottomY = plateBottom.offsetTop;
+  const springTop = topY; // top anchor (px)
+
+  // space available for the mass to move
+  const maxPixelExtension = (bottomY - springTop) - 60; // leave room for the mass
+
+  // smooth position interpolation
+  const speed = parseFloat(speedSlider.value);
+  y += (targetY - y) * speed;
+
+  // pixel position for the TOP of the mass container (we will place mass.top there)
+  // we offset by 10 to keep a small gap from the plate (matches prior behavior)
+  const massTopPx = springTop + 10 + y * maxPixelExtension;
+
+  // place mass (mass element's top aligns with massTopPx)
+  mass.style.top = massTopPx + 'px';
+
+  // compute the top of the visible ball inside the mass container:
+  // .ball is 32px tall and is centered inside mass (40px tall),
+  // so the top of the ball is massTopPx + ( (massHeight - ballHeight) / 2 ) = massTopPx + 4
+  const ballTopPx = massTopPx + 4;
+
+  // spring height must be the distance between springTop and the top of the ball
+  let springHeight = Math.max(20, Math.round(ballTopPx - springTop));
+  // update spring SVG size and viewBox so the path coordinates match
+  springSVG.style.top = springTop + 'px';
+  springSVG.setAttribute('height', springHeight + 10); // small padding
+  springSVG.setAttribute('viewBox', `-12 10 24 ${springHeight + 24}`);
+
+  // build a smooth coil path that runs from 0 -> springHeight
+  // The x oscillation is small and constant; coils increase slightly with stretch for realism
+  const turns = Math.max(4, Math.round(4 + y * 10));
+  const segs = turns * 12;
+  const amp = 8;
+  let path = '';
+  for(let i=0;i<=segs;i++){
+    const t = i / segs;
+    const yy = Math.round(t * springHeight);
+    const xx = Math.round(Math.sin(t * turns * 2 * Math.PI) * amp);
+    path += (i === 0 ? `M ${xx} ${yy}` : ` L ${xx} ${yy}`);
+  }
+  // final straight connector to ensure the spring visually meets the ball top
+  path += ` L 0 ${springHeight}`;
+
+  springPath.setAttribute('d', path);
+
+  // update extension label
+  extensionLabel.textContent = 'x = ' + (y * 100).toFixed(1) + ' cm';
+
+  // mass glow depends on electric force (unchanged)
+  const V = Math.abs(parseFloat(VInput.value));
+  const q = Math.abs(parseFloat(qInput.value));
+  const forceProxy = Math.min(1, (V * q * 10));
+  const ball = mass.querySelector('.ball');
+  ball.style.boxShadow = `0 8px 30px rgba(60,140,255,${0.2 + forceProxy * 0.7})`;
+  ball.style.transform = `scale(${1 + forceProxy * 0.16})`;
+
+  // occasional sparks if voltage high (unchanged)
+  if(V > 220 && Math.random() < 0.02) emitSpark((plateTop.offsetLeft + plateTop.offsetWidth + 6), plateTop.offsetTop + 20 + Math.random() * 20);
+}
+
+// Sparks
+function emitSpark(x,y){
+  const s = document.createElement('div');
+  s.className = 'spark';
+  const size = 6 + Math.random()*8;
+  s.style.width = s.style.height = size + 'px';
+  s.style.left = x + 'px'; s.style.top = y + 'px';
+  s.style.background = `radial-gradient(circle, rgba(255,255,200,1) 0%, rgba(255,170,80,0.9) 30%, rgba(255,80,20,0.8) 80%)`;
+  s.style.opacity = 1;
+  document.getElementById('canvasWrapper').appendChild(s);
+  const vx = -8 + Math.random()*8;
+  const vy = -6 + Math.random()*-12;
+  let life = 200 + Math.random()*200;
+  function step(){
+    life -= 16;
+    y += vy*0.02; x += vx*0.02;
+    s.style.left = x + 'px'; s.style.top = y + 'px';
+    s.style.opacity = Math.max(0, life/300);
+    s.style.transform = `translate(${(Math.random()-0.5)*4}px,${-(300-life)/12}px) scale(${1+ (300-life)/800})`;
+    if(life<=0){ s.remove(); return; }
+    requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+// Resize canvas to wrapper
+function fitCanvas(){
+  fieldCanvas.width = stage.clientWidth;
+  fieldCanvas.height = stage.clientHeight;
+}
+
+window.addEventListener('resize', ()=>{ fitCanvas(); layoutPlates(); });
+fitCanvas(); layoutPlates();
+
+// main loop
+function loop(){
+  drawField();
+  drawSpringAndMass();
+  requestAnimationFrame(loop);
+}
+loop();
+
+// initial particles refresh every few seconds, also when V changes
+setInterval(()=>{ resetParticles(); }, 5000);
+
+</script>
+</body>
+</html>
